@@ -1,1 +1,1 @@
-FROM ghcr.io/nezhahq/nezha:v1
+FROM ghcr.io/nezhahq/nezha:latest
