@@ -8,7 +8,7 @@ RUN chmod +x /usr/local/bin/cloudflared && cloudflared --version
 # 面板的 mux 要求 r.ProtoMajor == 2，cloudflared 的 http2Origin 要求源站为 https；
 # 面板自带 HTTPS server 不支持 HTTP/2，所以用 Caddy 在中间做转换：
 #   cloudflared --(HTTPS/HTTP2)--> Caddy:8444 --(h2c)--> 面板:8008
-ADD https://github.com/caddyserver/caddy/releases/latest/download/caddy_linux_amd64.tar.gz /tmp/caddy.tar.gz
+ADD https://github.com/caddyserver/caddy/releases/download/v2.11.4/caddy_2.11.4_linux_amd64.tar.gz /tmp/caddy.tar.gz
 RUN tar -xzf /tmp/caddy.tar.gz -C /usr/local/bin caddy && \
     chmod +x /usr/local/bin/caddy && \
     rm /tmp/caddy.tar.gz && \
