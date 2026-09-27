@@ -22,9 +22,10 @@ cat > /etc/cloudflared/config.yml <<'EOF'
 tunnel: e91b8727-1a7c-45dd-a6e8-a71205170a84
 credentials-file: /etc/cloudflared/creds.json
 protocol: http2
+# 新版面板 HTTP 与 gRPC 复用同一端口（8008，h2c），没有独立的 5555
 ingress:
   - hostname: grpc.coco.gv.uy
-    service: http://localhost:5555
+    service: http://localhost:8008
     originRequest:
       http2Origin: true
       connectTimeout: 30s
