@@ -1,10 +1,18 @@
 #!/bin/sh
-# Render 启动脚本：同时拉起 cloudflared tunnel（gRPC 穿透）和哪吒面板
+# Render 启动脚本：cloudflared tunnel（gRPC 穿透）+ Caddy（TLS终止/h2c）+ 哪吒面板
 # 需要 Render 环境变量：CF_TUNNEL_CREDS（credentials.json 的 base64）
-# 原理：
-# 1. dashboard 建的 tunnel 用 --token 跑会忽略本地 ingress，改用 credentials-file + 本地 config.yml
-# 2. cloudflared 的 http2Origin 不支持明文 h2c，必须是 https 源站；面板开启内置 HTTPS（8443，自签名证书）
-# 3. cloudflared 以 https:// + http2Origin + noTLSVerify 连接面板，gRPC 才能走通
+#
+# 链路：
+#   Agent --(gRPC/HTTPS)--> CF Edge --(HTTP2)--> cloudflared
+#         --(HTTPS/HTTP2, http2Origin)--> Caddy:8444
+#         --(h2c, HTTP2明文)--> 面板:8008
+#
+# 为什么需要 Caddy：
+# 1. 面板的 HTTP+gRPC mux 要求 r.ProtoMajor == 2（必须是 HTTP/2）
+# 2. cloudflared 的 http2Origin 要求源站为 https（不支持明文 h2c 直连）
+# 3. 面板自带的 HTTPS server 用 tls.Listener 实现，不会自动启用 HTTP/2
+# 4. 面板的 HTTP server（8008）原生支持 h2c（SetUnencryptedHTTP2）
+# 所以：Caddy 终止 TLS（自签名，tls internal 自动生成），再以 h2c 反代到 8008
 
 set -e
 
@@ -16,43 +24,30 @@ if [ -z "$CF_TUNNEL_CREDS" ]; then
   exit 1
 fi
 
-# --- 面板 HTTPS 配置（供 cloudflared 的 http2Origin 使用）---
-# 面板配置文件位置：/dashboard/data/config.yaml
-PANEL_CONFIG="/dashboard/data/config.yaml"
-TLS_CERT="/etc/nezha-tls/cert.pem"
-TLS_KEY="/etc/nezha-tls/key.pem"
-HTTPS_PORT="8443"
+# --- Caddy：TLS 终止 + h2c 反代 ---
+CADDY_PORT="8444"
+PANEL_PORT="8008"
+mkdir -p /etc/caddy
+cat > /etc/caddy/Caddyfile <<EOF
+:$CADDY_PORT {
+    # 内部自签名证书（每次启动自动生成，不存仓库）；cloudflared 用 noTLSVerify 跳过校验
+    tls internal
+    # h2c:// 表示以后端 HTTP/2 明文方式连接面板 8008（面板 8008 原生支持 h2c）
+    reverse_proxy h2c://localhost:$PANEL_PORT
+}
+EOF
 
-if [ ! -f "$TLS_CERT" ] || [ ! -f "$TLS_KEY" ]; then
-  echo "[start] ERROR: TLS 证书缺失 ($TLS_CERT)，检查 Dockerfile 是否 COPY 了 tls/ 目录"
+echo "[start] launching caddy (TLS termination on :$CADDY_PORT, h2c -> localhost:$PANEL_PORT) ..."
+caddy run --config /etc/caddy/Caddyfile --adapter caddyfile &
+CADDY_PID=$!
+sleep 4
+if ! kill -0 $CADDY_PID 2>/dev/null; then
+  echo "[start] ERROR: caddy 启动失败，看上面日志"
   exit 1
 fi
+echo "[start] caddy running (pid $CADDY_PID)"
 
-mkdir -p /dashboard/data
-if [ ! -f "$PANEL_CONFIG" ]; then
-  echo "[start] 创建面板初始配置（含 HTTPS）..."
-  cat > "$PANEL_CONFIG" <<EOF
-listen_port: 8008
-https:
-  listen_port: $HTTPS_PORT
-  tls_cert_path: $TLS_CERT
-  tls_key_path: $TLS_KEY
-  insecure_tls: false
-EOF
-elif ! grep -q "^https:" "$PANEL_CONFIG"; then
-  echo "[start] 向现有面板配置注入 HTTPS 段..."
-  cat >> "$PANEL_CONFIG" <<EOF
-https:
-  listen_port: $HTTPS_PORT
-  tls_cert_path: $TLS_CERT
-  tls_key_path: $TLS_KEY
-  insecure_tls: false
-EOF
-else
-  echo "[start] 面板配置已有 https 段，跳过注入"
-fi
-
-# --- cloudflared 配置 ---
+# --- cloudflared ---
 mkdir -p /etc/cloudflared
 echo "$CF_TUNNEL_CREDS" | base64 -d > /etc/cloudflared/creds.json
 chmod 600 /etc/cloudflared/creds.json
@@ -68,11 +63,9 @@ cat > /etc/cloudflared/config.yml <<EOF
 tunnel: $TUNNEL_ID
 credentials-file: /etc/cloudflared/creds.json
 protocol: http2
-# 新版面板 HTTP 与 gRPC 复用同一端口；gRPC 走面板的 HTTPS 端口（8443），
-# 因为 cloudflared 的 http2Origin 要求源站为 https（不支持明文 h2c）
 ingress:
   - hostname: grpc.coco.gv.uy
-    service: https://localhost:$HTTPS_PORT
+    service: https://localhost:$CADDY_PORT
     originRequest:
       http2Origin: true
       noTLSVerify: true
@@ -80,7 +73,7 @@ ingress:
   - service: http_status:404
 EOF
 
-echo "[start] launching cloudflared (gRPC -> grpc.coco.gv.uy via https origin, http2Origin on) ..."
+echo "[start] launching cloudflared (gRPC -> grpc.coco.gv.uy via Caddy https, http2Origin on) ..."
 cloudflared tunnel --no-autoupdate --config /etc/cloudflared/config.yml run &
 TUNNEL_PID=$!
 
@@ -92,5 +85,5 @@ if ! kill -0 $TUNNEL_PID 2>/dev/null; then
 fi
 echo "[start] cloudflared running (pid $TUNNEL_PID)"
 
-echo "[start] launching nezha dashboard (http:8008, https:$HTTPS_PORT) ..."
+echo "[start] launching nezha dashboard (http:$PANEL_PORT with h2c) ..."
 exec /dashboard/app
