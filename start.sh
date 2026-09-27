@@ -28,12 +28,6 @@ fi
 CADDY_PORT="8444"
 PANEL_PORT="8008"
 
-# 启动时生成自签名证书（仅内部使用，不进仓库；cloudflared 用 noTLSVerify 跳过校验）
-openssl req -x509 -newkey rsa:2048 \
-  -keyout /tmp/caddy.key -out /tmp/caddy.crt \
-  -days 3650 -nodes -subj "/CN=localhost" 2>/dev/null
-chmod 600 /tmp/caddy.key
-
 mkdir -p /etc/caddy
 cat > /etc/caddy/Caddyfile <<EOF
 {
@@ -41,8 +35,10 @@ cat > /etc/caddy/Caddyfile <<EOF
     auto_https off
     admin off
 }
-:$CADDY_PORT {
-    tls /tmp/caddy.crt /tmp/caddy.key
+# 写明确主机名 localhost，tls internal 才能签出带正确 SAN 的证书
+# （之前只写 :8444，Caddy 不知道给哪个域名签，导致 TLS 握手 internal error）
+localhost:$CADDY_PORT {
+    tls internal
     # h2c:// 表示以后端 HTTP/2 明文方式连接面板 8008（面板 8008 原生支持 h2c）
     reverse_proxy h2c://localhost:$PANEL_PORT
 }
