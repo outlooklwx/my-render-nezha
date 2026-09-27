@@ -1,0 +1,5 @@
+# 不进 Docker build context 的敏感文件
+tunnel-creds*.txt
+*.b64.txt
+tls/
+.gitignore
