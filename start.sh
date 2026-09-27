@@ -66,7 +66,7 @@ if ! kill -0 $TUNNEL_PID 2>/dev/null; then
 fi
 echo "[start] cloudflared running (pid $TUNNEL_PID)"
 
-# --- 哪吒面板配置文件硬编码注入（同时锁定数据库与 gRPC 通信）---
+# --- 哪吒面板配置文件硬编码注入（锁定 PostgreSQL 与 gRPC 通信）---
 echo "[start] generating /dashboard/data/config.yaml ..."
 mkdir -p /dashboard/data
 
@@ -76,8 +76,8 @@ site_url: "https://nezha.coco.gv.uy"
 grpchost: "grpc.coco.gv.uy:443"
 grpcproxyport: 443
 tls: true
-db_type: postgres
-db_url: "postgres://neondb_owner:npg_QgOcstlS79Kn@ep-polished-bonus-b35ts15c-pooler.c-4.ap-southeast-1.aws.neon.tech/neondb?sslmode=require"
+nz_db_type: postgres
+nz_db_url: "postgres://neondb_owner:npg_QgOcstlS79Kn@ep-polished-bonus-b35ts15c-pooler.c-4.ap-southeast-1.aws.neon.tech/neondb?sslmode=require"
 EOF
 
 echo "[start] launching nezha dashboard (http:$PANEL_PORT with h2c) ..."
