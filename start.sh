@@ -17,9 +17,16 @@ fi
 mkdir -p /etc/cloudflared
 echo "$CF_TUNNEL_CREDS" | base64 -d > /etc/cloudflared/creds.json
 chmod 600 /etc/cloudflared/creds.json
+# 从凭证文件动态提取 TunnelID，避免写死导致凭证更新后对不上
+TUNNEL_ID=$(grep -o '"TunnelID"[[:space:]]*:[[:space:]]*"[^"]*"' /etc/cloudflared/creds.json | cut -d'"' -f4)
+if [ -z "$TUNNEL_ID" ]; then
+  echo "[start] ERROR: 无法从凭证中提取 TunnelID"
+  exit 1
+fi
+echo "[start] tunnel id: $TUNNEL_ID"
 
-cat > /etc/cloudflared/config.yml <<'EOF'
-tunnel: e91b8727-1a7c-45dd-a6e8-a71205170a84
+cat > /etc/cloudflared/config.yml <<EOF
+tunnel: $TUNNEL_ID
 credentials-file: /etc/cloudflared/creds.json
 protocol: http2
 # 新版面板 HTTP 与 gRPC 复用同一端口（8008，h2c），没有独立的 5555
