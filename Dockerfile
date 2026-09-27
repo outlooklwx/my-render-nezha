@@ -1,9 +1,10 @@
 # 阶段1: 编译 h2c-bridge (Go)
-FROM golang:1.23-alpine AS bridge-builder
+FROM golang:1.24-alpine AS bridge-builder
 WORKDIR /src
 COPY h2c-bridge.go .
+# 锁定 x/net 版本，避免 latest 要求更新的 Go
 RUN go mod init bridge 2>/dev/null; \
-    go get golang.org/x/net@latest && \
+    go get golang.org/x/net@v0.38.0 && \
     go mod tidy && \
     CGO_ENABLED=0 go build -trimpath -ldflags="-s -w" -o h2c-bridge h2c-bridge.go
 
