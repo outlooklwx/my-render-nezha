@@ -1,18 +1,26 @@
+# 阶段1: 编译 h2c-bridge (Go)
+FROM golang:1.23-alpine AS bridge-builder
+WORKDIR /src
+COPY h2c-bridge.go .
+RUN go mod init bridge 2>/dev/null; \
+    go get golang.org/x/net@latest && \
+    go mod tidy && \
+    CGO_ENABLED=0 go build -trimpath -ldflags="-s -w" -o h2c-bridge h2c-bridge.go
+
+# 阶段2: 运行镜像
 FROM ghcr.io/nezhahq/nezha:latest
 
 # cloudflared（gRPC 穿透）
 ADD https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-linux-amd64 /usr/local/bin/cloudflared
 RUN chmod +x /usr/local/bin/cloudflared && cloudflared --version
 
-# Caddy（TLS 终止 + h2c 反代，解决面板内置 HTTPS 不支持 HTTP/2 的问题）
-# 面板的 mux 要求 r.ProtoMajor == 2，cloudflared 的 http2Origin 要求源站为 https；
-# 面板自带 HTTPS server 不支持 HTTP/2，所以用 Caddy 在中间做转换：
-#   cloudflared --(HTTPS/HTTP2)--> Caddy:8444 --(h2c)--> 面板:8008
-ADD https://github.com/caddyserver/caddy/releases/download/v2.11.4/caddy_2.11.4_linux_amd64.tar.gz /tmp/caddy.tar.gz
-RUN tar -xzf /tmp/caddy.tar.gz -C /usr/local/bin caddy && \
-    chmod +x /usr/local/bin/caddy && \
-    rm /tmp/caddy.tar.gz && \
-    caddy version
+# h2c-bridge（TLS 终止 + h2c 反代，替代 Caddy）
+# 背景: 面板的 mux 要求 r.ProtoMajor == 2；cloudflared 的 http2Origin 要求源站为 https；
+# 面板自带 HTTPS server 不支持 HTTP/2；Caddy 的 reverse_proxy h2c 在此场景实际走了 HTTP/1.1。
+# h2c-bridge 用 Go 的 http2.Transport(AllowHTTP=true) 强制 h2c 到面板 8008:
+#   cloudflared --(HTTPS/HTTP2)--> h2c-bridge:8444 --(h2c)--> 面板:8008
+COPY --from=bridge-builder /src/h2c-bridge /usr/local/bin/h2c-bridge
+RUN chmod +x /usr/local/bin/h2c-bridge
 
 COPY start.sh /start.sh
 RUN chmod +x /start.sh
