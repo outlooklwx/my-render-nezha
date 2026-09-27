@@ -11,6 +11,12 @@ RUN go mod init bridge 2>/dev/null; \
 # 阶段2: 运行镜像
 FROM ghcr.io/nezhahq/nezha:latest
 
+# rclone（R2 备份/恢复 SQLite 数据）
+ADD https://downloads.rclone.org/rclone-current-linux-amd64.zip /tmp/rclone.zip
+RUN cd /tmp && unzip -q rclone.zip && cp rclone-*-linux-amd64/rclone /usr/local/bin/ && \
+    chmod +x /usr/local/bin/rclone && rm -rf /tmp/rclone.zip rclone-*-linux-amd64 && \
+    rclone version
+
 # cloudflared（gRPC 穿透）
 ADD https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-linux-amd64 /usr/local/bin/cloudflared
 RUN chmod +x /usr/local/bin/cloudflared && cloudflared --version
