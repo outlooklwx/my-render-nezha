@@ -99,7 +99,7 @@ if [ -n "$R2_ACCOUNT_ID" ] && [ -n "$R2_ACCESS_KEY_ID" ] && [ -n "$R2_SECRET_ACC
   echo "[r2] 尝试从 R2 恢复备份..."
   # 只恢复 data 目录，不恢复 config.yaml（避免损坏的配置导致面板无法启动）
   # config.yaml 中的密钥通过环境变量 NZ_JWTSECRETKEY 固定
-  if rclone copyto "r2:${R2_BUCKET_NAME}/${BACKUP_FILE}" "/tmp/${BACKUP_FILE}" 2>/tmp/r2-restore.log; then
+  if rclone copyto "r2:${R2_BUCKET_NAME}/${BACKUP_FILE}" "/tmp/${BACKUP_FILE}" --s3-no-check-bucket 2>/tmp/r2-restore.log; then
     echo "[r2] 找到备份，正在恢复 data 目录..."
     mkdir -p "$DATA_DIR"
     # 先解压到临时目录，验证成功后再移动，避免损坏文件覆盖
@@ -127,7 +127,7 @@ if [ -n "$R2_ACCOUNT_ID" ] && [ -n "$R2_ACCESS_KEY_ID" ] && [ -n "$R2_SECRET_ACC
       ls -la /dashboard/ 2>/dev/null | head -20
       if [ -d "$DATA_DIR" ]; then
         tar -czf "/tmp/${BACKUP_FILE}" -C /dashboard data 2>/tmp/r2-backup-tar.log
-        if rclone copyto "/tmp/${BACKUP_FILE}" "r2:${R2_BUCKET_NAME}/${BACKUP_FILE}" 2>/tmp/r2-backup.log; then
+        if rclone copyto "/tmp/${BACKUP_FILE}" "r2:${R2_BUCKET_NAME}/${BACKUP_FILE}" --s3-no-check-bucket 2>/tmp/r2-backup.log; then
           echo "[r2] 定时备份成功 $(date -u +%FT%TZ)"
         else
           echo "[r2] 定时备份失败 $(date -u +%FT%TZ)，错误："
