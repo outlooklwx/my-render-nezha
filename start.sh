@@ -119,14 +119,23 @@ if [ -n "$R2_ACCOUNT_ID" ] && [ -n "$R2_ACCESS_KEY_ID" ] && [ -n "$R2_SECRET_ACC
   (
     while true; do
       sleep 600
+      echo "[r2] 开始定时备份检查..."
+      # 自动查找 SQLite 文件位置
+      DB_FILE=$(find /dashboard -name "*.db" -o -name "sqlite*" 2>/dev/null | head -1)
+      echo "[r2] 找到数据库文件: ${DB_FILE:-没找到}"
+      echo "[r2] /dashboard/data 存在: $([ -d "$DATA_DIR" ] && echo yes || echo no)"
+      ls -la /dashboard/ 2>/dev/null | head -20
       if [ -d "$DATA_DIR" ]; then
-        tar -czf "/tmp/${BACKUP_FILE}" -C /dashboard data 2>/dev/null
-        if rclone copyto "/tmp/${BACKUP_FILE}" "r2:${R2_BUCKET_NAME}/${BACKUP_FILE}" 2>/dev/null; then
+        tar -czf "/tmp/${BACKUP_FILE}" -C /dashboard data 2>/tmp/r2-backup-tar.log
+        if rclone copyto "/tmp/${BACKUP_FILE}" "r2:${R2_BUCKET_NAME}/${BACKUP_FILE}" 2>/tmp/r2-backup.log; then
           echo "[r2] 定时备份成功 $(date -u +%FT%TZ)"
         else
-          echo "[r2] 定时备份失败 $(date -u +%FT%TZ)"
+          echo "[r2] 定时备份失败 $(date -u +%FT%TZ)，错误："
+          cat /tmp/r2-backup.log 2>/dev/null | head -10
         fi
         rm -f "/tmp/${BACKUP_FILE}"
+      else
+        echo "[r2] 数据目录不存在，跳过备份"
       fi
     done
   ) &
