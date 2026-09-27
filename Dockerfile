@@ -1,4 +1,4 @@
-# 阶段1: 编译 h2c-bridge (Go)
+# 阶段1: 编译 h2c-bridge (Go) + 准备 rclone
 FROM golang:1.24-alpine AS bridge-builder
 WORKDIR /src
 COPY h2c-bridge.go .
@@ -7,16 +7,17 @@ RUN go mod init bridge 2>/dev/null; \
     go get golang.org/x/net@v0.38.0 && \
     go mod tidy && \
     CGO_ENABLED=0 go build -trimpath -ldflags="-s -w" -o h2c-bridge h2c-bridge.go
+# 下载 rclone（Alpine 有 unzip，解压好备用）
+RUN apk add --no-cache unzip && \
+    wget -q https://downloads.rclone.org/rclone-current-linux-amd64.zip -O /tmp/rclone.zip && \
+    cd /tmp && unzip -q -o rclone.zip && cp rclone-*-linux-amd64/rclone /src/rclone && chmod +x /src/rclone
 
 # 阶段2: 运行镜像
 FROM ghcr.io/nezhahq/nezha:latest
 
-# rclone（R2 备份/恢复 SQLite 数据）
-ADD https://downloads.rclone.org/rclone-current-linux-amd64.zip /tmp/rclone.zip
-RUN (apk add --no-cache unzip 2>/dev/null || (apt-get update -qq && apt-get install -y -qq unzip 2>/dev/null)) ; \
-    cd /tmp && unzip -q -o rclone.zip && cp rclone-*-linux-amd64/rclone /usr/local/bin/ && \
-    chmod +x /usr/local/bin/rclone && rm -rf /tmp/rclone.zip rclone-*-linux-amd64 && \
-    rclone version
+# rclone（R2 备份/恢复 SQLite 数据，从 builder 阶段复制已解压的二进制）
+COPY --from=bridge-builder /src/rclone /usr/local/bin/rclone
+RUN chmod +x /usr/local/bin/rclone && rclone version
 
 # cloudflared（gRPC 穿透）
 ADD https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-linux-amd64 /usr/local/bin/cloudflared
