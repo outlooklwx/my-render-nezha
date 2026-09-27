@@ -39,6 +39,11 @@ cat > /etc/caddy/Caddyfile <<EOF
 # （之前只写 :8444，Caddy 不知道给哪个域名签，导致 TLS 握手 internal error）
 localhost:$CADDY_PORT {
     tls internal
+    # 访问日志：看 cloudflared 过来的是 HTTP/1.1 还是 HTTP/2
+    log {
+        output stdout
+        format console
+    }
     # h2c:// + transport versions h2c：强制以后端 HTTP/2 明文方式连接面板 8008
     # （面板 8008 原生支持 h2c；mux 要求 r.ProtoMajor == 2）
     # 参考：https://github.com/gmountie/gmountie/blob/HEAD/docs/recipes/caddy-reverse-proxy.md
