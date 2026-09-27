@@ -68,8 +68,12 @@ echo "[start] cloudflared running (pid $TUNNEL_PID)"
 
 # --- 哪吒面板配置文件硬编码注入（锁定 PostgreSQL 与 gRPC 通信）---
 echo "[start] generating /dashboard/data/config.yaml ..."
+#!/bin/sh
+
+# 1. 强制创建配置目录
 mkdir -p /dashboard/data
 
+# 2. 写入标准的 config.yaml 配置（兼容哪吒 v2 字段命名）
 cat <<EOF > /dashboard/data/config.yaml
 language: zh-CN
 site_url: "https://nezha.coco.gv.uy"
@@ -80,5 +84,11 @@ nz_db_type: postgres
 nz_db_url: "postgres://neondb_owner:npg_QgOcstlS79Kn@ep-polished-bonus-b35ts15c-pooler.c-4.ap-southeast-1.aws.neon.tech/neondb?sslmode=require"
 EOF
 
-echo "[start] launching nezha dashboard (http:$PANEL_PORT with h2c) ..."
+# 3. 环境变量补充导出（保险机制）
+export NZ_DB_TYPE="postgres"
+export NZ_DB_URL="postgres://neondb_owner:npg_QgOcstlS79Kn@ep-polished-bonus-b35ts15c-pooler.c-4.ap-southeast-1.aws.neon.tech/neondb?sslmode=require"
+export NZ_GRPCHOST="grpc.coco.gv.uy:443"
+export NZ_SITE_URL="https://nezha.coco.gv.uy"
+
+echo "[start] launching nezha dashboard..."
 exec /dashboard/app
