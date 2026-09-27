@@ -80,8 +80,6 @@ site_url: "https://nezha.coco.gv.uy"
 grpchost: "grpc.coco.gv.uy:443"
 grpcproxyport: 443
 tls: true
-export NZ_DB_TYPE="postgres"
-export NZ_DB_URL="postgres://neondb_owner:npg_QgOcstlS79Kn@ep-polished-bonus-b35ts15c-pooler.c-4.ap-southeast-1.aws.neon.tech/neondb?sslmode=require"
 EOF
 
 # 3. 环境变量补充导出（保险机制）
