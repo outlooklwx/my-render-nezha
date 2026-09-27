@@ -97,22 +97,30 @@ if [ -n "$R2_ACCOUNT_ID" ] && [ -n "$R2_ACCESS_KEY_ID" ] && [ -n "$R2_SECRET_ACC
   export RCLONE_CONFIG_R2_ACL="private"
 
   echo "[r2] 尝试从 R2 恢复备份..."
+  # 只恢复 data 目录，不恢复 config.yaml（避免损坏的配置导致面板无法启动）
+  # config.yaml 中的密钥通过环境变量 NZ_JWTSECRETKEY 固定
   if rclone copyto "r2:${R2_BUCKET_NAME}/${BACKUP_FILE}" "/tmp/${BACKUP_FILE}" 2>/tmp/r2-restore.log; then
-    echo "[r2] 找到备份，正在恢复..."
+    echo "[r2] 找到备份，正在恢复 data 目录..."
     mkdir -p "$DATA_DIR"
-    tar -xzf "/tmp/${BACKUP_FILE}" -C /dashboard 2>/dev/null || echo "[r2] 解压警告，继续启动"
-    rm -f "/tmp/${BACKUP_FILE}"
-    echo "[r2] 恢复完成"
+    # 先解压到临时目录，验证成功后再移动，避免损坏文件覆盖
+    rm -rf /tmp/r2-restore && mkdir -p /tmp/r2-restore
+    if tar -xzf "/tmp/${BACKUP_FILE}" -C /tmp/r2-restore 2>/dev/null && [ -d "/tmp/r2-restore/data" ]; then
+      cp -a /tmp/r2-restore/data/. "$DATA_DIR"/
+      echo "[r2] 恢复完成"
+    else
+      echo "[r2] 备份文件损坏或格式不对，跳过恢复，用空数据启动"
+    fi
+    rm -rf /tmp/r2-restore "/tmp/${BACKUP_FILE}"
   else
     echo "[r2] 没有找到备份（首次部署或备份未上传），用空数据启动"
   fi
 
-  # 后台定时备份：每 10 分钟打包上传
+  # 后台定时备份：每 10 分钟打包上传（只备份 data 目录）
   (
     while true; do
       sleep 600
       if [ -d "$DATA_DIR" ]; then
-        tar -czf "/tmp/${BACKUP_FILE}" -C /dashboard data config.yaml 2>/dev/null
+        tar -czf "/tmp/${BACKUP_FILE}" -C /dashboard data 2>/dev/null
         if rclone copyto "/tmp/${BACKUP_FILE}" "r2:${R2_BUCKET_NAME}/${BACKUP_FILE}" 2>/dev/null; then
           echo "[r2] 定时备份成功 $(date -u +%FT%TZ)"
         else
