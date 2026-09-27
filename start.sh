@@ -27,11 +27,22 @@ fi
 # --- Caddy：TLS 终止 + h2c 反代 ---
 CADDY_PORT="8444"
 PANEL_PORT="8008"
+
+# 启动时生成自签名证书（仅内部使用，不进仓库；cloudflared 用 noTLSVerify 跳过校验）
+openssl req -x509 -newkey rsa:2048 \
+  -keyout /tmp/caddy.key -out /tmp/caddy.crt \
+  -days 3650 -nodes -subj "/CN=localhost" 2>/dev/null
+chmod 600 /tmp/caddy.key
+
 mkdir -p /etc/caddy
 cat > /etc/caddy/Caddyfile <<EOF
+{
+    # 关掉自动 HTTPS（避免监听 :80 干扰 Render 端口检测）
+    auto_https off
+    admin off
+}
 :$CADDY_PORT {
-    # 内部自签名证书（每次启动自动生成，不存仓库）；cloudflared 用 noTLSVerify 跳过校验
-    tls internal
+    tls /tmp/caddy.crt /tmp/caddy.key
     # h2c:// 表示以后端 HTTP/2 明文方式连接面板 8008（面板 8008 原生支持 h2c）
     reverse_proxy h2c://localhost:$PANEL_PORT
 }
